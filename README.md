@@ -8,6 +8,8 @@ An end-to-end, privacy-first computer vision project that classifies **visible f
 
 [Open ExpressionLab](https://aditya-garg02.github.io/facial-expression-lab/) and select **Get started**, or [open the browser workbench directly](https://aditya-garg02.github.io/facial-expression-lab/browser-lab/). Choose a portrait or allow camera access for live expression scores. The browser downloads the models on first use and processes frames on your device. The local Python workbench below also includes multi-face analysis and Grad-CAM.
 
+The browser workbench aligns five facial landmarks and uses the Apache-2.0 [OpenCV Zoo Progressive Teacher model](https://github.com/opencv/opencv_zoo/tree/main/models/facial_expression_recognition) on a 112×112 color crop. The FER-2013 checkpoint metrics below describe the local Python model.
+
 ## Features
 
 - A custom residual CNN trained from FER-2013, with configurable epochs, batch size, and augmentation.

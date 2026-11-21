@@ -2,13 +2,13 @@ const $ = selector => document.querySelector(selector);
 const video = $('video'), view = $('canvas'), ctx = view.getContext('2d');
 const status = $('#status'), camera = $('#camera'), result = $('#result');
 const capture = $('#capture'), retake = $('#retake');
-const labels = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral'];
+const labels = ['Angry', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sad', 'Surprise'];
 function surface(size) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   return canvas.getContext('2d', {willReadFrequently: true});
 }
-const detectorInput = surface(640), crop = surface(48);
+const detectorInput = surface(640), crop = surface(112);
 let runtime, stream, generation = 0;
 function models() {
   if (!runtime) {
@@ -17,8 +17,8 @@ function models() {
     ort.env.wasm.wasmPaths = new URL('./', location.href).href;
     runtime = Promise.all([
       ort.InferenceSession.create('detector.onnx'),
-      ort.InferenceSession.create('expression.onnx'),
-      fetch('profile.json').then(response => response.json()),
+      ort.InferenceSession.create('mobilefacenet.onnx'),
+
     ]).catch(error => { runtime = undefined; throw error; });
   }
   return runtime;
@@ -61,10 +61,47 @@ function selectFace(outputs, scale, w, h) {
       const boxHeight = Math.min(h, cy + height / 2) - y;
       if (Math.min(boxWidth, boxHeight) < 24) continue;
       bestScore = confidence;
-      best = [x, y, boxWidth, boxHeight];
+      const offsets = outputs['kps_' + stride].data;
+      const points = [];
+      for (let j = 0; j < 5; j++) {
+        const offset = i * 10 + j * 2;
+        points.push([(i % columns + offsets[offset]) * unit,
+          (Math.floor(i / columns) + offsets[offset+1]) * unit]);
+      }
+      best = {box: [x,y,boxWidth,boxHeight], points};
     }
   }
   return best;
+}
+// Eye, nose and mouth landmarks in the model's 112px reference crop.
+const reference = [[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],
+  [41.5493,92.3655],[70.7299,92.2041]];
+function centroid(points) {
+  return points.reduce(([x,y],[u,v]) => [x+u/points.length,y+v/points.length],[0,0]);
+}
+function alignedInput(points) {
+  const [sx,sy] = centroid(points), [tx,ty] = centroid(reference);
+  let dot = 0, cross = 0, energy = 0;
+  points.forEach(([x,y], i) => {
+    const dx = x-sx, dy = y-sy, u = reference[i][0]-tx, v = reference[i][1]-ty;
+    dot += dx*u + dy*v;
+    cross += dx*v - dy*u;
+    energy += dx*dx + dy*dy;
+  });
+  if (!(energy > 0)) throw new Error('Invalid face landmarks');
+  const a = dot/energy, b = cross/energy;
+  crop.fillStyle = 'black';
+  crop.fillRect(0,0,112,112);
+  crop.save();
+  crop.setTransform(a,b,-b,a,tx-a*sx+b*sy,ty-b*sx-a*sy);
+  crop.drawImage(view,0,0);
+  crop.restore();
+  const pixels = crop.getImageData(0,0,112,112).data;
+  const plane = 112*112, input = new Float32Array(3*plane);
+  for (let c=0; c<3; c++) {
+    for (let i=0; i<plane; i++) input[c*plane+i] = pixels[4*i+c]/127.5-1;
+  }
+  return new ort.Tensor('float32', input, [1,3,112,112]);
 }
 async function analyze(source, id) {
   const sw = source.videoWidth || source.naturalWidth, sh = source.videoHeight || source.naturalHeight;
@@ -82,7 +119,7 @@ async function analyze(source, id) {
     capture.hidden = true;
     retake.hidden = false;
   }
-  const [detector, classifier, profile] = await models();
+  const [detector, classifier] = await models();
   if (id !== generation) return;
   detectorInput.fillStyle = 'black'; detectorInput.fillRect(0,0,640,640);
   detectorInput.drawImage(view,0,0,w*scale,h*scale);
@@ -93,49 +130,24 @@ async function analyze(source, id) {
   }
   const outputs = await detector.run({input:new ort.Tensor('float32',data,[1,3,640,640])});
   if (id !== generation) return;
-  const box = selectFace(outputs,scale,w,h);
+  const face = selectFace(outputs,scale,w,h);
   view.hidden = false;
-  if (!box) {
+  if (!face) {
     status.textContent = 'No face detected. Try a closer, well-lit portrait.';
     result.hidden = true;
     return;
   }
-  const [x,y,bw,bh] = box;
-  const left=Math.max(0,x-.12*bw), top=Math.max(0,y-.12*bh);
-  const right=Math.min(w,x+1.12*bw), bottom=Math.min(h,y+1.12*bh);
-  crop.drawImage(view,left,top,right-left,bottom-top,0,0,48,48);
-  const rgb=crop.getImageData(0,0,48,48).data, input=new Float32Array(48*48);
-  for(let i=0;i<input.length;i++) input[i]=(.299*rgb[i*4]+.587*rgb[i*4+1]+.114*rgb[i*4+2])/127.5-1;
-  const score = async values => (await classifier.run({face:new ort.Tensor('float32',values,[1,1,48,48])})).scores.data;
-  const views = [input];
-  if (profile.selected === 'mirrored') {
-    views.push(input.map((_, i) => input[i - i % 48 + 47 - i % 48]));
-  }
-  if (profile.browser_shift_temperature) {
-    // Reflect at the crop edge, matching the one-pixel validation transforms.
-    for (const original of views.slice()) {
-      for (const offset of [-1, 1]) {
-        views.push(original.map((_, i) => {
-          const x = Math.abs(i % 48 + offset);
-          const y = Math.abs(Math.floor(i / 48) + offset);
-          return original[Math.min(y, 94 - y) * 48 + Math.min(x, 94 - x)];
-        }));
-      }
-    }
-  }
-  const logits = new Float32Array(labels.length);
-  for (const values of views) {
-    if (id !== generation) return;
-    const scores = await score(values);
-    for (let i = 0; i < labels.length; i++) logits[i] += scores[i] / views.length;
-  }
+  const prediction = await classifier.run({data: alignedInput(face.points)});
   if (id !== generation) return;
+  const logits = prediction.label.data;
   const peak = Math.max(...logits);
-  const temp = profile.browser_shift_temperature ?? profile.temperature;
-  const exp=logits.map(value=>Math.exp((value-peak)/temp)), sum=exp.reduce((a,b)=>a+b,0);
+  // Temperature fitted on 249 detected portraits sampled from FER-2013 PublicTest.
+  const temperature = 3.641778;
+  const exp = logits.map(value => Math.exp((value-peak)/temperature));
+  const sum = exp.reduce((a,b) => a+b,0);
   const rows = labels.map((label, i) => ({label, value: exp[i] / sum}))
     .sort((a, b) => b.value - a.value);
-  ctx.strokeStyle='#ffad84'; ctx.lineWidth=Math.max(2,w/200); ctx.strokeRect(...box);
+  ctx.strokeStyle='#ffad84'; ctx.lineWidth=Math.max(2,w/200); ctx.strokeRect(...face.box);
   $('ol').replaceChildren(...rows.map(({label,value})=>{
     const row=document.createElement('li'), meter=document.createElement('meter');
     meter.value=value; meter.setAttribute('aria-label',label);
@@ -156,7 +168,7 @@ function fail(id,error) {
 async function openCamera() {
   const id = reset();
   camera.disabled = true;
-  status.textContent = 'Opening camera�';
+  status.textContent = 'Opening camera…';
   try {
     const media = await navigator.mediaDevices.getUserMedia({
       video: {facingMode: 'user', width: {ideal: 640}, frameRate: {ideal: 24, max: 30}},
@@ -183,7 +195,7 @@ camera.onclick = retake.onclick = openCamera;
 capture.onclick = async () => {
   if (!stream) return;
   const id = generation;
-  status.textContent = 'Analyzing picture�';
+  status.textContent = 'Analyzing picture…';
   try { await analyze(video, id); }
   catch (error) { fail(id, error); }
 };
@@ -192,7 +204,7 @@ $('#upload').onchange=async event=>{
   if(!file)return;
   event.target.value='';
   const id=reset(), url=URL.createObjectURL(file);
-  status.textContent='Loading model and analyzing portrait…';
+  status.textContent='Loading model and analyzing portraitâ€¦';
   try {
     const photo=new Image(); photo.src=url; await photo.decode();
     await analyze(photo,id);
