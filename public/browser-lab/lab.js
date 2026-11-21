@@ -84,8 +84,9 @@ async function analyze(source, live, id) {
     return;
   }
   const [x,y,bw,bh] = box;
-  const left=Math.max(0,x-.1*bw), top=Math.max(0,y-.1*bh);
-  crop.drawImage(view,left,top,Math.min(w,x+1.1*bw)-left,Math.min(h,y+1.1*bh)-top,0,0,48,48);
+  const left=Math.max(0,x-.35*bw), top=Math.max(0,y-.2*bh);
+  const right=Math.min(w,x+1.35*bw), bottom=Math.min(h,y+1.5*bh);
+  crop.drawImage(view,left,top,right-left,bottom-top,0,0,48,48);
   const rgb=crop.getImageData(0,0,48,48).data, input=new Float32Array(48*48);
   for(let i=0;i<input.length;i++) input[i]=(.299*rgb[i*4]+.587*rgb[i*4+1]+.114*rgb[i*4+2])/127.5-1;
   const score = async values => (await classifier.run({face:new ort.Tensor('float32',values,[1,1,48,48])})).scores.data;
