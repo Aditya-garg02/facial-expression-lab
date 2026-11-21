@@ -9,9 +9,7 @@ function surface(size) {
   return canvas.getContext('2d', {willReadFrequently: true});
 }
 const detectorInput = surface(640), crop = surface(48);
-let runtime, stream, generation = 0, displayedScores;
-const scoreMemory = new Float64Array(labels.length);
-let lastScoreUpdate = 0;
+let runtime, stream, generation = 0;
 function models() {
   if (!runtime) {
     ort.env.wasm.numThreads = 1;
@@ -29,44 +27,50 @@ function reset() {
   stream?.getTracks().forEach(track => track.stop());
   stream = null;
   video.srcObject = null;
-  displayedScores = undefined;
-  lastScoreUpdate = 0;
+  camera.hidden = false;
+  video.hidden = true;
   camera.textContent = 'Start camera';
   capture.hidden = retake.hidden = true;
   result.hidden = view.hidden = true;
   return generation;
 }
-function largestFace(outputs, scale, w, h) {
-  let best, area = 0;
-  for (const stride of [8,16,32]) {
-    const cls = outputs['cls_' + stride].data, obj = outputs['obj_' + stride].data;
-    const boxes = outputs['bbox_' + stride].data, columns = 640 / stride;
-    for (let i = 0; i < cls.length; i++) {
-      if (cls[i] * obj[i] < .8) continue;
+function selectFace(outputs, scale, w, h) {
+  let best;
+  let bestScore = 0.8;
+  for (const stride of [8, 16, 32]) {
+    const classes = outputs['cls_' + stride].data;
+    const objects = outputs['obj_' + stride].data;
+    const boxes = outputs['bbox_' + stride].data;
+    const columns = 640 / stride;
+    for (let i = 0; i < classes.length; i++) {
+      const confidence = Math.sqrt(classes[i] * objects[i]);
+      if (!(confidence > bestScore)) continue;
+      // YuNet encodes center offsets in grid cells and dimensions in log space.
       const k = i * 4;
-      const centerX = (i % columns + .5) * stride;
-      const centerY = (Math.floor(i / columns) + .5) * stride;
-      const x = Math.max(0, (centerX-boxes[k]*stride) / scale);
-      const y = Math.max(0, (centerY-boxes[k+1]*stride) / scale);
-      const right = Math.min(w, (centerX+boxes[k+2]*stride) / scale);
-      const bottom = Math.min(h, (centerY+boxes[k+3]*stride) / scale);
-      const width = right-x, height = bottom-y;
-      if (width > 0 && height > 0 && width*height > area) {
-        area = width*height;
-        best = [x,y,width,height];
-      }
+      const unit = stride / scale;
+      const cx = (i % columns + boxes[k]) * unit;
+      const cy = (Math.floor(i / columns) + boxes[k + 1]) * unit;
+      const width = Math.exp(boxes[k + 2]) * unit;
+      const height = Math.exp(boxes[k + 3]) * unit;
+      const x = Math.max(0, cx - width / 2);
+      const y = Math.max(0, cy - height / 2);
+      const boxWidth = Math.min(w, cx + width / 2) - x;
+      const boxHeight = Math.min(h, cy + height / 2) - y;
+      if (Math.min(boxWidth, boxHeight) < 24) continue;
+      bestScore = confidence;
+      best = [x, y, boxWidth, boxHeight];
     }
   }
   return best;
 }
-async function analyze(source, live, id) {
-  const [detector, classifier, profile] = await models();
-  if (id !== generation) return;
+async function analyze(source, id) {
   const sw = source.videoWidth || source.naturalWidth, sh = source.videoHeight || source.naturalHeight;
   const ratio = Math.min(1,960/Math.max(sw,sh));
   view.width = Math.max(1,Math.round(sw*ratio)); view.height = Math.max(1,Math.round(sh*ratio));
   const w = view.width, h = view.height, scale = 640/Math.max(w,h);
   ctx.drawImage(source,0,0,w,h);
+  const [detector, classifier, profile] = await models();
+  if (id !== generation) return;
   detectorInput.fillStyle = 'black'; detectorInput.fillRect(0,0,640,640);
   detectorInput.drawImage(view,0,0,w*scale,h*scale);
   const pixels = detectorInput.getImageData(0,0,640,640).data;
@@ -76,7 +80,7 @@ async function analyze(source, live, id) {
   }
   const outputs = await detector.run({input:new ort.Tensor('float32',data,[1,3,640,640])});
   if (id !== generation) return;
-  const box = largestFace(outputs,scale,w,h);
+  const box = selectFace(outputs,scale,w,h);
   view.hidden = false;
   if (!box) {
     status.textContent = 'No face detected. Try a closer, well-lit portrait.';
@@ -84,41 +88,32 @@ async function analyze(source, live, id) {
     return;
   }
   const [x,y,bw,bh] = box;
-  const left=Math.max(0,x-.35*bw), top=Math.max(0,y-.2*bh);
-  const right=Math.min(w,x+1.35*bw), bottom=Math.min(h,y+1.5*bh);
+  const left=Math.max(0,x-.12*bw), top=Math.max(0,y-.12*bh);
+  const right=Math.min(w,x+1.12*bw), bottom=Math.min(h,y+1.12*bh);
   crop.drawImage(view,left,top,right-left,bottom-top,0,0,48,48);
   const rgb=crop.getImageData(0,0,48,48).data, input=new Float32Array(48*48);
   for(let i=0;i<input.length;i++) input[i]=(.299*rgb[i*4]+.587*rgb[i*4+1]+.114*rgb[i*4+2])/127.5-1;
   const score = async values => (await classifier.run({face:new ort.Tensor('float32',values,[1,1,48,48])})).scores.data;
   const logits = await score(input);
-  if (!live && profile.selected==='mirrored') {
+  if (profile.selected==='mirrored') {
     const mirror = input.map((_,i)=>input[i-i%48+47-i%48]);
     const other = await score(mirror);
     for(let i=0;i<logits.length;i++) logits[i]=(logits[i]+other[i])/2;
   }
   if (id !== generation) return;
-  const peak=Math.max(...logits), temp=live?profile.fast_temperature:profile.temperature;
+  const peak=Math.max(...logits), temp=profile.temperature;
   const exp=logits.map(value=>Math.exp((value-peak)/temp)), sum=exp.reduce((a,b)=>a+b,0);
-  const now = performance.now();
-  if (!live || !displayedScores) {
-    displayedScores = labels.map((_,i)=>exp[i]/sum);
-    lastScoreUpdate = now;
-  } else {
-    const elapsed = Math.max(0, now-lastScoreUpdate);
-    const blend = 1-Math.exp(-elapsed/1800);
-    for (let i=0;i<labels.length;i++) scoreMemory[i]=displayedScores[i]+(exp[i]/sum-displayedScores[i])*blend;
-    const total = scoreMemory.reduce((a,b)=>a+b,0);
-    displayedScores = Array.from(scoreMemory,value=>value/total);
-    lastScoreUpdate = now;
-  }
-  const rows=labels.map((label,i)=>({label,value:displayedScores[i]})).sort((a,b)=>b.value-a.value);
+  const rows = labels.map((label, i) => ({label, value: exp[i] / sum}))
+    .sort((a, b) => b.value - a.value);
   ctx.strokeStyle='#ffad84'; ctx.lineWidth=Math.max(2,w/200); ctx.strokeRect(...box);
   $('ol').replaceChildren(...rows.map(({label,value})=>{
     const row=document.createElement('li'), meter=document.createElement('meter');
     meter.value=value; meter.setAttribute('aria-label',label);
     row.append(label,meter,Math.round(100*value)+'%'); return row;
   }));
-  status.textContent='Showing scores for the outlined face.';
+  status.textContent = rows[0].value < .45
+    ? 'Uncertain expression. Several labels fit this face.'
+    : 'Showing scores for the outlined face.';
   result.hidden=false;
 }
 function fail(id,error) {
@@ -148,14 +143,13 @@ capture.onclick=async()=>{
   capture.disabled=true;
   status.textContent='Analyzing picture…';
   try{
-    await analyze(video,true,id);
+    await analyze(video,id);
     if(id===generation){
       video.hidden=true;
       capture.hidden=true;
       retake.hidden=false;
       stream?.getTracks().forEach(track=>track.stop());
       stream=null;
-      status.textContent='Picture captured. Your expression scores are held steady.';
     }
   }catch(error){fail(id,error);}
   finally{capture.disabled=false;}
@@ -179,10 +173,11 @@ $('#upload').onchange=async event=>{
   status.textContent='Loading model and analyzing portrait…';
   try {
     const photo=new Image(); photo.src=url; await photo.decode();
-    await analyze(photo,false,id);
+    await analyze(photo,id);
   } catch(error){fail(id,error);} finally{URL.revokeObjectURL(url);}
 };
 window.addEventListener('pagehide',reset);
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden && camera.textContent==='Stop camera'){reset();status.textContent='Camera stopped.';}
 });
+
