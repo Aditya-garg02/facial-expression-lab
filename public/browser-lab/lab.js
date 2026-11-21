@@ -8,7 +8,9 @@ function surface(size) {
   return canvas.getContext('2d', {willReadFrequently: true});
 }
 const detectorInput = surface(640), crop = surface(48);
-let runtime, stream, generation = 0;
+let runtime, stream, generation = 0, displayedScores;
+const scoreMemory = new Float64Array(labels.length);
+let lastScoreUpdate = 0;
 function models() {
   if (!runtime) {
     ort.env.wasm.numThreads = 1;
@@ -26,6 +28,8 @@ function reset() {
   stream?.getTracks().forEach(track => track.stop());
   stream = null;
   video.srcObject = null;
+  displayedScores = undefined;
+  lastScoreUpdate = 0;
   camera.textContent = 'Start live camera';
   result.hidden = view.hidden = true;
   return generation;
@@ -90,7 +94,19 @@ async function analyze(source, live, id) {
   if (id !== generation) return;
   const peak=Math.max(...logits), temp=live?profile.fast_temperature:profile.temperature;
   const exp=logits.map(value=>Math.exp((value-peak)/temp)), sum=exp.reduce((a,b)=>a+b,0);
-  const rows=labels.map((label,i)=>({label,value:exp[i]/sum})).sort((a,b)=>b.value-a.value);
+  const now = performance.now();
+  if (!live || !displayedScores) {
+    displayedScores = labels.map((_,i)=>exp[i]/sum);
+    lastScoreUpdate = now;
+  } else {
+    const elapsed = Math.max(0, now-lastScoreUpdate);
+    const blend = 1-Math.exp(-elapsed/1800);
+    for (let i=0;i<labels.length;i++) scoreMemory[i]=displayedScores[i]+(exp[i]/sum-displayedScores[i])*blend;
+    const total = scoreMemory.reduce((a,b)=>a+b,0);
+    displayedScores = Array.from(scoreMemory,value=>value/total);
+    lastScoreUpdate = now;
+  }
+  const rows=labels.map((label,i)=>({label,value:displayedScores[i]})).sort((a,b)=>b.value-a.value);
   ctx.strokeStyle='#ffad84'; ctx.lineWidth=Math.max(2,w/200); ctx.strokeRect(...box);
   $('ol').replaceChildren(...rows.map(({label,value})=>{
     const row=document.createElement('li'), meter=document.createElement('meter');
@@ -119,7 +135,7 @@ camera.onclick=async()=>{
     stream=media; video.srcObject=media; await video.play();
     while(id===generation){
       await analyze(video,true,id);
-      await new Promise(resolve=>setTimeout(resolve,180));
+      await new Promise(resolve=>setTimeout(resolve,700));
     }
   } catch(error){fail(id,error);}
 };
