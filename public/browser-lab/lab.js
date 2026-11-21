@@ -1,6 +1,7 @@
 const $ = selector => document.querySelector(selector);
 const video = $('video'), view = $('canvas'), ctx = view.getContext('2d');
 const status = $('#status'), camera = $('#camera'), result = $('#result');
+const capture = $('#capture'), retake = $('#retake');
 const labels = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral'];
 function surface(size) {
   const canvas = document.createElement('canvas');
@@ -30,7 +31,8 @@ function reset() {
   video.srcObject = null;
   displayedScores = undefined;
   lastScoreUpdate = 0;
-  camera.textContent = 'Start live camera';
+  camera.textContent = 'Start camera';
+  capture.hidden = retake.hidden = true;
   result.hidden = view.hidden = true;
   return generation;
 }
@@ -124,20 +126,47 @@ function fail(id,error) {
     'Could not analyze this input. Check your connection, try a JPEG or PNG portrait, or open the link in an up-to-date browser.';
 }
 camera.onclick=async()=>{
-  const stopping=camera.textContent==='Stop camera';
   const id=reset();
-  if(stopping){status.textContent='Camera stopped.';return;}
-  camera.textContent='Stop camera';
   status.textContent='Opening camera and loading the model…';
   try {
     const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640}},audio:false});
     if(id!==generation){media.getTracks().forEach(track=>track.stop());return;}
     stream=media; video.srcObject=media; await video.play();
-    while(id===generation){
-      await analyze(video,true,id);
-      await new Promise(resolve=>setTimeout(resolve,700));
-    }
+    video.hidden=false;
+    view.hidden=true;
+    camera.hidden=true;
+    capture.hidden=false;
+    status.textContent='Center your face in the preview, then take a picture.';
   } catch(error){fail(id,error);}
+};
+capture.onclick=async()=>{
+  if(!stream)return;
+  const id=generation;
+  capture.disabled=true;
+  status.textContent='Analyzing picture…';
+  try{
+    await analyze(video,true,id);
+    if(id===generation){
+      video.hidden=true;
+      capture.hidden=true;
+      retake.hidden=false;
+      stream?.getTracks().forEach(track=>track.stop());
+      stream=null;
+      status.textContent='Picture captured. Your expression scores are held steady.';
+    }
+  }catch(error){fail(id,error);}
+  finally{capture.disabled=false;}
+};
+retake.onclick=async()=>{
+  const id=reset();
+  status.textContent='Restarting camera…';
+  try{
+    const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640}},audio:false});
+    if(id!==generation){media.getTracks().forEach(track=>track.stop());return;}
+    stream=media;video.srcObject=media;await video.play();
+    view.hidden=true;video.hidden=false;camera.hidden=true;capture.hidden=false;
+    status.textContent='Center your face in the preview, then take a picture.';
+  }catch(error){fail(id,error);}
 };
 $('#upload').onchange=async event=>{
   const file=event.target.files[0];
