@@ -107,16 +107,31 @@ async function analyze(source, id) {
   const rgb=crop.getImageData(0,0,48,48).data, input=new Float32Array(48*48);
   for(let i=0;i<input.length;i++) input[i]=(.299*rgb[i*4]+.587*rgb[i*4+1]+.114*rgb[i*4+2])/127.5-1;
   const score = async values => (await classifier.run({face:new ort.Tensor('float32',values,[1,1,48,48])})).scores.data;
-  const mirror = profile.selected === 'mirrored'
-    ? input.map((_, i) => input[i - i % 48 + 47 - i % 48])
-    : null;
-  const logits = await score(input);
-  if (mirror) {
-    const other = await score(mirror);
-    for(let i=0;i<logits.length;i++) logits[i]=(logits[i]+other[i])/2;
+  const views = [input];
+  if (profile.selected === 'mirrored') {
+    views.push(input.map((_, i) => input[i - i % 48 + 47 - i % 48]));
+  }
+  if (profile.browser_shift_temperature) {
+    // Reflect at the crop edge, matching the one-pixel validation transforms.
+    for (const original of views.slice()) {
+      for (const offset of [-1, 1]) {
+        views.push(original.map((_, i) => {
+          const x = Math.abs(i % 48 + offset);
+          const y = Math.abs(Math.floor(i / 48) + offset);
+          return original[Math.min(y, 94 - y) * 48 + Math.min(x, 94 - x)];
+        }));
+      }
+    }
+  }
+  const logits = new Float32Array(labels.length);
+  for (const values of views) {
+    if (id !== generation) return;
+    const scores = await score(values);
+    for (let i = 0; i < labels.length; i++) logits[i] += scores[i] / views.length;
   }
   if (id !== generation) return;
-  const peak=Math.max(...logits), temp=profile.temperature;
+  const peak = Math.max(...logits);
+  const temp = profile.browser_shift_temperature ?? profile.temperature;
   const exp=logits.map(value=>Math.exp((value-peak)/temp)), sum=exp.reduce((a,b)=>a+b,0);
   const rows = labels.map((label, i) => ({label, value: exp[i] / sum}))
     .sort((a, b) => b.value - a.value);

@@ -5,6 +5,7 @@
   "test_samples": 3589,
   "selected": "mirrored",
   "temperature": 1.2630387578080768,
+  "browser_shift_temperature": 1.1254151462373712,
   "fast_temperature": 1.3813919341851004,
   "validation": {
     "original": {
