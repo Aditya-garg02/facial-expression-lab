@@ -1,5 +1,7 @@
 # ExpressionLab — Facial Expression Recognition
 
+[![Open the interactive site featuring a human face sculpted from copper-colored particles](docs/images/expressionlab-preview.png)](https://aditya-garg02.github.io/facial-expression-lab/)
+
 An end-to-end, privacy-first computer vision project that classifies **visible facial expressions** into seven FER-2013 categories. It includes a residual CNN, a reproducible training pipeline, evaluation reports, Grad-CAM visualizations, and a local Streamlit app for images and live camera frames.
 
 > This model estimates dataset labels from pixels. It does not know a person's internal emotional state, intent, personality, or wellbeing. Do not use it for hiring, grading, surveillance, access decisions, or other consequential decisions.
@@ -102,6 +104,12 @@ facial-expression-lab/
 ```
 
 ## Evaluation and reporting
+
+![Confusion matrix comparing predicted and labeled expressions across the seven FER-2013 classes](artifacts/confusion_matrix.png)
+
+The diagonal shows correct classifications. Off-diagonal cells show which expressions the checkpoint confuses.
+
+![Training and validation curves across epochs for the supplied checkpoint](artifacts/training_curves.png)
 
 The held-out test report is emitted after training. Report **macro-F1 and per-class recall** alongside accuracy because the categories are imbalanced. Do not present a single accuracy value without the split, dataset, and class-wise results. FER-2013 is a small, low-resolution, in-the-wild dataset with known demographic and label limitations; test performance does not establish performance on a different camera, population, or context.
 
