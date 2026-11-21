@@ -13,6 +13,7 @@ let runtime, stream, generation = 0;
 function models() {
   if (!runtime) {
     ort.env.wasm.numThreads = 1;
+    ort.env.wasm.proxy = typeof Worker === 'function';
     ort.env.wasm.wasmPaths = new URL('./', location.href).href;
     runtime = Promise.all([
       ort.InferenceSession.create('detector.onnx'),
@@ -29,6 +30,8 @@ function reset() {
   video.srcObject = null;
   camera.hidden = false;
   video.hidden = true;
+  camera.disabled = false;
+  view.classList.remove('selfie');
   camera.textContent = 'Start camera';
   capture.hidden = retake.hidden = true;
   result.hidden = view.hidden = true;
@@ -69,6 +72,16 @@ async function analyze(source, id) {
   view.width = Math.max(1,Math.round(sw*ratio)); view.height = Math.max(1,Math.round(sh*ratio));
   const w = view.width, h = view.height, scale = 640/Math.max(w,h);
   ctx.drawImage(source,0,0,w,h);
+  if (source === video) {
+    view.classList.toggle('selfie', video.classList.contains('selfie'));
+    view.hidden = false;
+    video.hidden = true;
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+    video.srcObject = null;
+    capture.hidden = true;
+    retake.hidden = false;
+  }
   const [detector, classifier, profile] = await models();
   if (id !== generation) return;
   detectorInput.fillStyle = 'black'; detectorInput.fillRect(0,0,640,640);
@@ -94,9 +107,11 @@ async function analyze(source, id) {
   const rgb=crop.getImageData(0,0,48,48).data, input=new Float32Array(48*48);
   for(let i=0;i<input.length;i++) input[i]=(.299*rgb[i*4]+.587*rgb[i*4+1]+.114*rgb[i*4+2])/127.5-1;
   const score = async values => (await classifier.run({face:new ort.Tensor('float32',values,[1,1,48,48])})).scores.data;
+  const mirror = profile.selected === 'mirrored'
+    ? input.map((_, i) => input[i - i % 48 + 47 - i % 48])
+    : null;
   const logits = await score(input);
-  if (profile.selected==='mirrored') {
-    const mirror = input.map((_,i)=>input[i-i%48+47-i%48]);
+  if (mirror) {
     const other = await score(mirror);
     for(let i=0;i<logits.length;i++) logits[i]=(logits[i]+other[i])/2;
   }
@@ -123,47 +138,39 @@ function fail(id,error) {
   status.textContent=error.name==='NotAllowedError'?'Camera access was denied. Allow the camera in browser settings or choose an image.':
     'Could not analyze this input. Check your connection, try a JPEG or PNG portrait, or open the link in an up-to-date browser.';
 }
-camera.onclick=async()=>{
-  const id=reset();
-  status.textContent='Opening camera and loading the modelâ€¦';
+async function openCamera() {
+  const id = reset();
+  camera.disabled = true;
+  status.textContent = 'Opening camera…';
   try {
-    const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640}},audio:false});
-    if(id!==generation){media.getTracks().forEach(track=>track.stop());return;}
-    stream=media; video.srcObject=media; await video.play();
-    video.hidden=false;
-    view.hidden=true;
-    camera.hidden=true;
-    capture.hidden=false;
-    status.textContent='Center your face in the preview, then take a picture.';
-  } catch(error){fail(id,error);}
-};
-capture.onclick=async()=>{
-  if(!stream)return;
-  const id=generation;
-  capture.disabled=true;
-  status.textContent='Analyzing pictureâ€¦';
-  try{
-    await analyze(video,id);
-    if(id===generation){
-      video.hidden=true;
-      capture.hidden=true;
-      retake.hidden=false;
-      stream?.getTracks().forEach(track=>track.stop());
-      stream=null;
+    const media = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: 'user', width: {ideal: 640}, frameRate: {ideal: 24, max: 30}},
+      audio: false,
+    });
+    if (id !== generation) {
+      media.getTracks().forEach(track => track.stop());
+      return;
     }
-  }catch(error){fail(id,error);}
-  finally{capture.disabled=false;}
-};
-retake.onclick=async()=>{
-  const id=reset();
-  status.textContent='Restarting cameraâ€¦';
-  try{
-    const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640}},audio:false});
-    if(id!==generation){media.getTracks().forEach(track=>track.stop());return;}
-    stream=media;video.srcObject=media;await video.play();
-    view.hidden=true;video.hidden=false;camera.hidden=true;capture.hidden=false;
-    status.textContent='Center your face in the preview, then take a picture.';
-  }catch(error){fail(id,error);}
+    stream = media;
+    const facing = media.getVideoTracks()[0].getSettings().facingMode;
+    video.classList.toggle('selfie', facing === 'user' || !facing);
+    video.srcObject = media;
+    await video.play();
+    if (id !== generation) return;
+    video.hidden = false;
+    camera.hidden = true;
+    capture.hidden = false;
+    status.textContent = 'Center your face in the preview, then take a picture.';
+    models().catch(() => {}); // Capture retries if the initial download fails.
+  } catch (error) { fail(id, error); }
+}
+camera.onclick = retake.onclick = openCamera;
+capture.onclick = async () => {
+  if (!stream) return;
+  const id = generation;
+  status.textContent = 'Analyzing picture…';
+  try { await analyze(video, id); }
+  catch (error) { fail(id, error); }
 };
 $('#upload').onchange=async event=>{
   const file=event.target.files[0];
@@ -178,6 +185,6 @@ $('#upload').onchange=async event=>{
 };
 window.addEventListener('pagehide',reset);
 document.addEventListener('visibilitychange',()=>{
-  if(document.hidden && camera.textContent==='Stop camera'){reset();status.textContent='Camera stopped.';}
+  if(document.hidden && (stream || camera.disabled && !camera.hidden)){reset();status.textContent='Camera stopped.';}
 });
 
