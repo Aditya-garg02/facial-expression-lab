@@ -1,0 +1,117 @@
+.is-entering,
+.is-in-lab { overflow: hidden; }
+
+.is-entering #site {
+  opacity: 0;
+  transition: opacity 155ms ease-in;
+}
+
+.is-entering .workbench,
+.is-entering .site-footer { visibility: hidden; }
+
+.is-entering:has(.entry-motion--cinematic) #site {
+  transition-duration: 350ms;
+}
+
+.is-in-lab #site {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.entry-motion {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  isolation: isolate;
+  overflow: clip;
+  pointer-events: none;
+  transition: opacity 410ms cubic-bezier(.3,.05,.2,1);
+}
+
+.entry-motion::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 52% 46%, #231715 0%, #141011 47%, #101011 82%);
+  animation: entry-wash min(var(--entry-duration), 490ms) ease-out both;
+}
+
+.entry-motion--cinematic::after {
+  content: "";
+  position: absolute;
+  top: 47%;
+  left: 50%;
+  width: 100vmax;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  background: radial-gradient(circle closest-side,
+    transparent 32%,
+    #ff7e5710 45%,
+    #ffae8b28 55%,
+    #f4ebdc18 57%,
+    transparent 67%);
+  animation: entry-scan var(--entry-duration) cubic-bezier(.18,.53,.14,1) both;
+}
+
+.entry-motion > #sculpture,
+.entry-motion > #sculpture > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  transform: none;
+  filter: none;
+  mask: none;
+  clip-path: none;
+}
+
+.entry-motion > #sculpture { z-index: 1; }
+.is-in-lab .entry-motion { opacity: 0; }
+
+.entry-status {
+  position: fixed;
+  z-index: 40;
+  inset: auto 1rem max(10vh, env(safe-area-inset-bottom));
+  margin: 0;
+  color: #f4ebdc;
+  text-align: center;
+  font: 400 .9rem/1.45 "IBM Plex Mono", Consolas, monospace;
+  pointer-events: none;
+}
+
+.lab-frame {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #101011;
+  visibility: hidden;
+}
+
+.is-in-lab .lab-frame { visibility: visible; }
+
+@keyframes entry-wash {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes entry-scan {
+  0% { opacity: 0; transform: scale(.3); }
+  27% { opacity: .4; }
+  58% { opacity: .88; }
+  100% { opacity: 0; transform: scale(2.35); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-entering #site,
+  .entry-motion { transition-duration: 150ms; }
+  .entry-motion--cinematic::after { animation: none; opacity: 0; }
+}

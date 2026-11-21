@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" data-type="software">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#101011">
+    <meta name="page-type" content="software">
+    <meta name="site-kind" content="software">
+    <meta name="description" content="Explore how a computer vision model classifies visible facial expressions with live video, images, and held-out model results.">
+    <title>ExpressionLab · Facial Expression Workbench</title>
+  </head>
+  <body>
+    <div class="site" id="site">
+      <div id="pepper-field" aria-hidden="true"></div>
+      <a class="skip-link" href="#main">Skip to content</a>
+      <header class="site-header wrap">
+        <a class="wordmark" href="./" aria-label="ExpressionLab home">
+          <span class="wordmark__mark" aria-hidden="true"></span>
+          ExpressionLab
+        </a>
+        <nav aria-label="Main navigation">
+          <a class="nav-link" href="#workbench">Inside the lab</a>
+        </nav>
+      </header>
+
+      <main id="main">
+        <section class="hero wrap" aria-labelledby="hero-title" data-enter>
+          <div class="hero__copy">
+            <h1 id="hero-title"><span>The face,</span><em>in motion.</em></h1>
+            <p class="hero__description">A computer vision lab for exploring facial expressions in live video and still images.</p>
+            <a class="start-button" id="start-lab" href="/lab/">Get started</a>
+          </div>
+
+          <figure class="stage" id="stage" data-visual>
+            <figcaption class="visually-hidden">Interactive 3D portrait. Move your pointer over the scene or tap it to scatter particles.</figcaption>
+            <div class="stage__light" aria-hidden="true"></div>
+            <div class="stage__sculpture" id="sculpture" aria-hidden="true"></div>
+            <div class="stage__footer">
+              <button class="ripple-button" id="ripple-button" type="button" hidden>
+                <span class="ripple-button__icon" aria-hidden="true"></span> Scatter particles
+              </button>
+            </div>
+          </figure>
+        </section>
+
+        <section class="workbench" id="workbench" aria-labelledby="workbench-title">
+          <div class="wrap">
+            <h2 id="workbench-title">Inside the lab</h2>
+            <div class="workbench__grid">
+              <div class="workbench__modes">
+                <article class="mode">
+                  <h3>Live lab</h3>
+                  <p>Turn on your camera to watch the seven class scores change as you move.</p>
+                </article>
+                <article class="mode">
+                  <h3>Image analysis</h3>
+                  <p>Upload a portrait, compare scores for each detected face, and inspect the Grad-CAM heatmap.</p>
+                </article>
+                <article class="mode">
+                  <h3>Model report</h3>
+                  <p>Review the held-out test results, confusion matrix, and training curves.</p>
+                </article>
+              </div>
+              <figure class="report" id="report-preview" hidden>
+                <figcaption>
+                  <strong>Recall by expression</strong>
+                  <span>FER-2013 test split · single-view baseline</span>
+                </figcaption>
+                <ul class="report__values" id="report-values"></ul>
+              </figure>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="wrap">
+          <span>ExpressionLab</span>
+          <p>For research and education. Images and video are processed locally.</p>
+        </div>
+      </footer>
+    </div>
+    <p class="entry-status" id="entry-status" role="status"></p>
+    <div id="lab-root"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
