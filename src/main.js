@@ -15,8 +15,7 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const landingTitle = document.title;
 const pagesPreview = import.meta.env.MODE === 'pages';
 if (pagesPreview) {
-  start.href = 'https://github.com/Aditya-garg02/facial-expression-lab#quick-start';
-  start.textContent = 'Run the lab locally';
+  start.href = import.meta.env.BASE_URL + 'browser-lab/';
 }
 const labPath = new URL(start.href).pathname;
 const sculptureAnchor = document.createComment('Sculpture mount');
@@ -168,7 +167,6 @@ function returnToLanding() {
 }
 
 start.addEventListener('click', (event) => {
-  if (pagesPreview) return;
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
   if (entry) return;

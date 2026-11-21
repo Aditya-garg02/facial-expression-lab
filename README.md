@@ -6,7 +6,7 @@ An end-to-end, privacy-first computer vision project that classifies **visible f
 
 > This model estimates dataset labels from pixels. It does not know a person's internal emotional state, intent, personality, or wellbeing. Do not use it for hiring, grading, surveillance, access decisions, or other consequential decisions.
 
-[Open the interactive 3D preview](https://aditya-garg02.github.io/facial-expression-lab/). GitHub Pages hosts the sculpture and benchmark preview. Follow the quick start below for live camera, image analysis, and Grad-CAM using the included checkpoint.
+[Open ExpressionLab](https://aditya-garg02.github.io/facial-expression-lab/) and select **Get started**, or [open the browser workbench directly](https://aditya-garg02.github.io/facial-expression-lab/browser-lab/). Choose a portrait or allow camera access for live expression scores. The browser downloads the models on first use and processes frames on your device. The local Python workbench below also includes multi-face analysis and Grad-CAM.
 
 ## Features
 

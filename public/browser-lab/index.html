@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ExpressionLab · Browser workbench</title>
+<link rel="stylesheet" href="lab.css"></head>
+<body><main id="lab-workbench">
+<a href="../" target="_top">← ExpressionLab</a>
+<h1>Expression workbench</h1>
+<p>Use your camera or choose a portrait. Images are processed on your device.</p>
+<div class="controls"><button id="camera">Start live camera</button><label>Choose image<input type="file" accept="image/*" id="upload"></label></div>
+<p role="status" id="status">For best results, face the camera in even light.</p>
+<video playsinline muted autoplay hidden></video><canvas hidden aria-label="Analyzed frame with the selected face outlined"></canvas>
+<section hidden id="result"><h2>Expression scores</h2><ol></ol><small>Scores describe visible expressions. They cannot establish how someone feels.</small></section>
+</main><script src="ort.wasm.min.js"></script><script type="module" src="lab.js"></script></body></html>
