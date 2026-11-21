@@ -42,13 +42,15 @@ function largestFace(outputs, scale, w, h) {
     const cls = outputs['cls_' + stride].data, obj = outputs['obj_' + stride].data;
     const boxes = outputs['bbox_' + stride].data, columns = 640 / stride;
     for (let i = 0; i < cls.length; i++) {
-      if (Math.sqrt(cls[i] * obj[i]) < .8) continue;
+      if (cls[i] * obj[i] < .8) continue;
       const k = i * 4;
-      const cx = (i % columns + boxes[k]) * stride / scale;
-      const cy = (Math.floor(i / columns) + boxes[k+1]) * stride / scale;
-      const bw = Math.exp(boxes[k+2]) * stride / scale, bh = Math.exp(boxes[k+3]) * stride / scale;
-      const x = Math.max(0, cx-bw/2), y = Math.max(0, cy-bh/2);
-      const width = Math.min(w,cx+bw/2)-x, height = Math.min(h,cy+bh/2)-y;
+      const centerX = (i % columns + .5) * stride;
+      const centerY = (Math.floor(i / columns) + .5) * stride;
+      const x = Math.max(0, (centerX-boxes[k]*stride) / scale);
+      const y = Math.max(0, (centerY-boxes[k+1]*stride) / scale);
+      const right = Math.min(w, (centerX+boxes[k+2]*stride) / scale);
+      const bottom = Math.min(h, (centerY+boxes[k+3]*stride) / scale);
+      const width = right-x, height = bottom-y;
       if (width > 0 && height > 0 && width*height > area) {
         area = width*height;
         best = [x,y,width,height];
